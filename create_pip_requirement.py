@@ -32,7 +32,7 @@ def create_pip_requirement():
 
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pip", "freeze"],
+            [sys.executable, "-m", "pip", "list", "--format=freeze"],
             capture_output=True, text=True, check=True
         )
 
