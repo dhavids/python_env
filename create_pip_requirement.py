@@ -21,8 +21,6 @@ def create_pip_requirement():
     # Get parent of current script directory
     script_path = Path(__file__).resolve()
     parent_dir = script_path.parent
-
-    # Ensure requirements directory exists
     requirements_dir = parent_dir / "requirements"
     requirements_dir.mkdir(parents=True, exist_ok=True)
 
@@ -32,12 +30,19 @@ def create_pip_requirement():
 
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pip", "list", "--format=freeze"],
+            [sys.executable, "-m", "pip", "freeze", "-l"],
             capture_output=True, text=True, check=True
         )
 
+        # Filter out lines with '-e' (editable installs)
+        filtered_output = "\n".join(
+            line for line in result.stdout.splitlines() 
+            if not line.startswith("-e")
+        )
+
+        # Write the output to the file
         with open(filepath, "w") as f:
-            f.write(result.stdout)
+            f.write(filtered_output)
 
         print(f"Requirements saved to {filepath}")
     except subprocess.CalledProcessError as e:
