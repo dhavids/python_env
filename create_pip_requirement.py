@@ -14,7 +14,7 @@ def get_env_name():
     else:
         return "global"
 
-def create_pip_requirement():
+def create_pip_requirement(remove_versions=True):
     version = f"{sys.version_info.major}.{sys.version_info.minor}"
     env_name = get_env_name()
 
@@ -39,6 +39,13 @@ def create_pip_requirement():
             line for line in result.stdout.splitlines() 
             if not line.startswith("-e")
         )
+
+        if remove_versions:
+            # Remove package versions by splitting at '=='
+            filtered_output = "\n".join(
+                line.split("==")[0] 
+                for line in filtered_output.splitlines()
+            )
 
         # Write the output to the file
         with open(filepath, "w") as f:
