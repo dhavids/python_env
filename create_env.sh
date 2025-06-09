@@ -157,6 +157,33 @@ fi
 
 echo "Installing requirements from: $REQ_FILE"
 pip install -r "$REQ_FILE"
+
+# Check if pyglet is in requirements and handle version
+if grep -q "pyglet" "$REQ_FILE"; then
+    echo "Found pyglet in requirements. Ensuring version 1.5.27..."
+    # Install requirements excluding pyglet first
+    grep -v "pyglet" "$REQ_FILE" > /tmp/requirements_no_pyglet.txt
+    if [[ -s /tmp/requirements_no_pyglet.txt ]]; then
+        pip install -r /tmp/requirements_no_pyglet.txt
+    fi
+    # Install specific pyglet version
+    pip install pyglet==1.5.27
+    rm -f /tmp/requirements_no_pyglet.txt
+else
+    # No pyglet in requirements, install normally
+    pip install -r "$REQ_FILE"
+fi
+
+# Double-check pyglet version if it's installed
+if pip show pyglet &> /dev/null; then
+    CURRENT_PYGLET=$(pip show pyglet | grep Version | cut -d' ' -f2)
+    if [[ "$CURRENT_PYGLET" != "1.5.27" ]]; then
+        echo "Pyglet version is $CURRENT_PYGLET, forcing upgrade to 1.5.27..."
+        pip install --force-reinstall pyglet==1.5.27
+    else
+        echo "Pyglet version 1.5.27 confirmed."
+    fi
+fi
 echo
 
 echo "Environment setup complete!"
