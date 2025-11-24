@@ -112,14 +112,38 @@ if [[ ! -f "$SETUP_PY_PATH" ]]; then
 fi
 echo
 
+# Get the package name from the base folder name
+BASE_FOLDER_NAME=$(basename "$BASE_FOLDER")
+PACKAGE_NAME=$(echo "$BASE_FOLDER_NAME" | tr '[:upper:]' '[:lower:]')
+
 # Install base folder in editable mode (check if already installed)
-if is_package_installed "local"; then
-    echo "Base folder package 'local' is already installed. Skipping..."
+if is_package_installed "$PACKAGE_NAME"; then
+    echo "Base folder package '$PACKAGE_NAME' is already installed. Skipping..."
 else
     echo "Installing base folder in editable mode..."
     cd "$BASE_FOLDER"
     pip install -e .
 fi
+echo
+
+# Add base folder to .pth file to ensure it's always in sys.path
+echo "Ensuring base folder is in sys.path..."
+SITE_PACKAGES=$(python -c "import site; print(site.getsitepackages()[0])")
+PTH_FILE="$SITE_PACKAGES/argos_base.pth"
+
+if [[ -f "$PTH_FILE" ]]; then
+    # Check if our path is already in the file
+    if grep -q "^$BASE_FOLDER$" "$PTH_FILE"; then
+        echo "Base folder already in sys.path via $PTH_FILE"
+    else
+        echo "Updating $PTH_FILE with base folder path"
+        echo "$BASE_FOLDER" >> "$PTH_FILE"
+    fi
+else
+    echo "Creating $PTH_FILE"
+    echo "$BASE_FOLDER" > "$PTH_FILE"
+fi
+echo "Added $BASE_FOLDER to sys.path"
 echo
 
 # Install mappo if it exists
