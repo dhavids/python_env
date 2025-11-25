@@ -180,7 +180,7 @@ else
 fi
 
 echo "Installing requirements from: $REQ_FILE"
-pip install -r "$REQ_FILE"
+# pip install -r "$REQ_FILE"
 
 # Check if pyglet is in requirements and handle version
 if grep -q "pyglet" "$REQ_FILE"; then

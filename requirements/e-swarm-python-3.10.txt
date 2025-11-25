@@ -21,7 +21,7 @@ gym
 gym-notices
 gymnasium
 idna
-imageio
+ImageIO
 Jinja2
 joblib
 kiwisolver
@@ -32,6 +32,21 @@ matplotlib
 mpmath
 networkx
 numpy
+nvidia-cublas-cu12
+nvidia-cuda-cupti-cu12
+nvidia-cuda-nvrtc-cu12
+nvidia-cuda-runtime-cu12
+nvidia-cudnn-cu12
+nvidia-cufft-cu12
+nvidia-cufile-cu12
+nvidia-curand-cu12
+nvidia-cusolver-cu12
+nvidia-cusparse-cu12
+nvidia-cusparselt-cu12
+nvidia-nccl-cu12
+nvidia-nvjitlink-cu12
+nvidia-nvshmem-cu12
+nvidia-nvtx-cu12
 packaging
 pandas
 pillow
@@ -40,6 +55,7 @@ protobuf
 psutil
 pydantic
 pydantic_core
+pyglet
 pyparsing
 python-dateutil
 pytz
@@ -47,6 +63,7 @@ PyYAML
 requests
 scikit-learn
 scipy
+seaborn
 sentry-sdk
 setproctitle
 six
@@ -57,6 +74,7 @@ threadpoolctl
 torch
 torchaudio
 torchvision
+triton
 typing-inspection
 typing_extensions
 tzdata
