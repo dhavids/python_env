@@ -8,6 +8,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_FOLDER="$(dirname "$SCRIPT_DIR")"
 PARENT_FOLDER="$(dirname "$BASE_FOLDER")"
 
+# If BASE_FOLDER is /home and ~/marl exists, use that instead
+if [[ "$BASE_FOLDER" == "/home" && -d "$HOME/marl" ]]; then
+    BASE_FOLDER="$HOME/marl"
+    PARENT_FOLDER="$HOME"
+    echo "[INFO] Detected Docker/container environment, using ~/marl as base folder"
+fi
+
 echo "Script directory: $SCRIPT_DIR"
 echo "Base folder: $BASE_FOLDER"
 echo "Parent folder: $PARENT_FOLDER"
@@ -223,6 +230,14 @@ echo
 echo "Environment setup complete!"
 echo "Virtual environment path: $VENV_PATH"
 echo "To activate manually: source $VENV_PATH/bin/activate"
+echo
+
+# Fix permissions to prevent Docker from locking files (if running as root in Docker)
+if [ "$EUID" -eq 0 ] && [[ -d "$VENV_PATH" ]]; then
+    echo "Fixing permissions on virtual environment..."
+    chmod -R 755 "$VENV_PATH" 2>/dev/null || true
+    echo "Permissions updated."
+fi
 echo
 
 # Return to base folder
