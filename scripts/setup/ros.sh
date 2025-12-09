@@ -6,6 +6,10 @@
 #!/bin/bash
 set -e
 
+# Prevent interactive prompts during package installation
+export DEBIAN_FRONTEND=noninteractive
+export TZ=Etc/UTC
+
 # Detect if we need sudo (not in Docker or running as root)
 if [ "$EUID" -eq 0 ] || ! command -v sudo &> /dev/null; then
     SUDO=""
