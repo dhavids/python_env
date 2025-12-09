@@ -236,6 +236,15 @@ echo
 if [ "$EUID" -eq 0 ] && [[ -d "$VENV_PATH" ]]; then
     echo "Fixing permissions on virtual environment..."
     chmod -R 755 "$VENV_PATH" 2>/dev/null || true
+    # Try to match ownership with a mounted volume (if available)
+    if [[ -d "$BASE_FOLDER" ]]; then
+        OWNER_UID=$(stat -c '%u' "$BASE_FOLDER" 2>/dev/null || echo "")
+        OWNER_GID=$(stat -c '%g' "$BASE_FOLDER" 2>/dev/null || echo "")
+        if [[ -n "$OWNER_UID" && "$OWNER_UID" != "0" ]]; then
+            echo "Setting ownership to UID:GID $OWNER_UID:$OWNER_GID to match host user..."
+            chown -R "$OWNER_UID:$OWNER_GID" "$VENV_PATH" 2>/dev/null || true
+        fi
+    fi
     echo "Permissions updated."
 fi
 echo
