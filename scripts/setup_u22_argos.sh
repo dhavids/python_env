@@ -98,6 +98,18 @@ echo ""
 echo "Setting up ARGoS3..."
 bash "$SETUP_DIR/argos3.sh"
 
+# Create Python virtual environment
+echo ""
+echo "Setting up Python virtual environment..."
+CREATE_ENV_SCRIPT="$PYTHON_ENV_DIR/create_env.sh"
+if [ -f "$CREATE_ENV_SCRIPT" ]; then
+    bash "$CREATE_ENV_SCRIPT"
+    echo "[OK] Python environment created"
+else
+    echo "[WARNING] create_env.sh not found at: $CREATE_ENV_SCRIPT"
+    echo "You can create the Python environment manually later."
+fi
+
 echo ""
 echo "============================================================"
 echo "ROS2 + ARGoS3 Setup Complete!"
@@ -110,4 +122,8 @@ echo "  source /opt/ros/humble/setup.bash"
 echo ""
 echo "To use ARGoS3:"
 echo "  argos3 --version"
+echo ""
+echo "Python virtual environment has been created."
+echo "To activate it:"
+echo "  source ../e-swarm/bin/activate"
 echo "============================================================"
