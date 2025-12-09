@@ -9,6 +9,9 @@ This document explains how to download and run setup scripts for different envir
 Download and run the setup script:
 
 ```bash
+# Install wget if not available (for minimal Docker images)
+apt update && apt install -y wget
+
 # Download the script
 wget https://raw.githubusercontent.com/dhavids/python_env/main/scripts/setup_u22_gazebo.sh
 
@@ -23,20 +26,15 @@ bash setup_u22_gazebo.sh
 - ROS2 Humble
 - Gazebo simulator
 
-**After installation:**
-```bash
-# Source ROS2
-source /opt/ros/humble/setup.bash
-
-# Test Gazebo
-gazebo --version
-```
 
 ### 2. ROS2 Humble with ARGoS
 
 Download and run the setup script:
 
 ```bash
+# Install wget if not available (for minimal Docker images)
+apt update && apt install -y wget
+
 # Download the script
 wget https://raw.githubusercontent.com/dhavids/python_env/main/scripts/setup_u22_argos.sh
 
@@ -50,15 +48,6 @@ bash setup_u22_argos.sh
 **What this installs:**
 - ROS2 Humble
 - ARGoS3 simulator
-
-**After installation:**
-```bash
-# Source ROS2
-source /opt/ros/humble/setup.bash
-
-# Test ARGoS
-argos3 --version
-```
 
 ---
 
@@ -83,19 +72,3 @@ If a script fails:
 2. **Ensure sufficient disk space** - ROS2 and simulators require several GB
 3. **Review error messages** - Scripts will indicate which component failed
 4. **Re-run the script** - Many transient errors can be resolved by running again
-
-## Manual Installation
-
-If you prefer to install components individually, you can use the component scripts directly from the `python_env` repository:
-
-```bash
-# Clone the repository
-git clone https://github.com/dhavids/python_env.git
-cd python_env/scripts/setup
-
-# Run individual setup scripts
-bash ros.sh              # Install ROS2 Humble
-bash gazebo.sh           # Install Gazebo
-bash argos3.sh           # Install ARGoS3
-bash turtlebot3.sh       # Install TurtleBot3
-```

@@ -47,6 +47,7 @@ is_package_installed() {
 # Check if e-swarm environment exists in parent folder
 E_SWARM_PATH="$PARENT_FOLDER/e-swarm"
 SCRATCH_E_SWARM_PATH="/scratch/aoa1v22/envs/e-swarm"
+HOME_E_SWARM_PATH="$HOME/e-swarm"
 
 if [[ -d "$E_SWARM_PATH" ]]; then
     echo "Found e-swarm environment at: $E_SWARM_PATH"
@@ -54,6 +55,9 @@ if [[ -d "$E_SWARM_PATH" ]]; then
 elif [[ -d "$SCRATCH_E_SWARM_PATH" ]]; then
     echo "Found e-swarm environment at: $SCRATCH_E_SWARM_PATH"
     VENV_PATH="$SCRATCH_E_SWARM_PATH"
+elif [[ -d "$HOME_E_SWARM_PATH" ]]; then
+    echo "Found e-swarm environment at: $HOME_E_SWARM_PATH"
+    VENV_PATH="$HOME_E_SWARM_PATH"
 else
     # Need to create environment
     echo "e-swarm environment not found. Creating new environment..."
@@ -62,6 +66,10 @@ else
     if [[ -d "/scratch" ]]; then
         mkdir -p "/scratch/aoa1v22/envs"
         VENV_PATH="/scratch/aoa1v22/envs/e-swarm"
+        echo "Will create environment at: $VENV_PATH"
+    elif [[ "$PARENT_FOLDER" == "/" || "$PARENT_FOLDER" == "/home" ]]; then
+        # If parent is root or /home, use home directory instead
+        VENV_PATH="$HOME/e-swarm"
         echo "Will create environment at: $VENV_PATH"
     else
         VENV_PATH="$PARENT_FOLDER/e-swarm"
