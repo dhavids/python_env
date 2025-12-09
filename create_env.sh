@@ -49,13 +49,14 @@ E_SWARM_PATH="$PARENT_FOLDER/e-swarm"
 SCRATCH_E_SWARM_PATH="/scratch/aoa1v22/envs/e-swarm"
 HOME_E_SWARM_PATH="$HOME/e-swarm"
 
-if [[ -d "$E_SWARM_PATH" ]]; then
+# Check if valid environment exists (has bin/activate)
+if [[ -f "$E_SWARM_PATH/bin/activate" ]]; then
     echo "Found e-swarm environment at: $E_SWARM_PATH"
     VENV_PATH="$E_SWARM_PATH"
-elif [[ -d "$SCRATCH_E_SWARM_PATH" ]]; then
+elif [[ -f "$SCRATCH_E_SWARM_PATH/bin/activate" ]]; then
     echo "Found e-swarm environment at: $SCRATCH_E_SWARM_PATH"
     VENV_PATH="$SCRATCH_E_SWARM_PATH"
-elif [[ -d "$HOME_E_SWARM_PATH" ]]; then
+elif [[ -f "$HOME_E_SWARM_PATH/bin/activate" ]]; then
     echo "Found e-swarm environment at: $HOME_E_SWARM_PATH"
     VENV_PATH="$HOME_E_SWARM_PATH"
 else
