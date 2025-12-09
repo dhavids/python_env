@@ -20,11 +20,6 @@
 # - Only creates DEF file and HPC build script
 # - Skips Docker commit and OCI archive creation
 # - Useful when TAR already exists or for updating scripts only
-#
-# IMPORTANT FOR HPC USAGE:
-# - For best compatibility, build the SIF on the target HPC system using its Apptainer module
-# - Version mismatches between build and runtime can cause UID/user namespace issues
-# - The script automatically configures user namespace support for multi-user HPC environments
 
 set -e  # Exit on any error
 
@@ -96,13 +91,10 @@ IMAGE_NAME="$2"
 # Determine build mode
 if [ "$SKIP_COMMIT" = true ]; then
     print_warn "SKIP COMMIT MODE: Only creating DEF and HPC scripts"
-    print_info "Docker commit and OCI archive creation will be skipped"
 elif [ "$LOCAL_BUILD" = true ]; then
-    print_warn "LOCAL BUILD MODE: Building SIF locally"
-    print_warn "Note: This may cause compatibility issues on HPC if versions differ"
+    print_warn "LOCAL BUILD MODE: Building SIF locally (may cause compatibility issues on HPC)"
 else
     print_info "HPC PREP MODE: Preparing build package for HPC"
-    print_info "After this completes, upload hpc_build/ folder to HPC and run build_on_hpc.sh"
 fi
 
 # Validate image name (no special characters except dash and underscore)
@@ -145,8 +137,6 @@ if [ "$SKIP_COMMIT" = false ]; then
         fi
     fi
     print_info "Container '$CONTAINER_NAME' found"
-else
-    print_info "Skipping Docker checks (--skip-commit mode)"
 fi
 
 # Check if Apptainer is installed (only for local build)
@@ -187,79 +177,94 @@ fi
 
 # Skip Docker build steps if in skip-commit mode
 if [ "$SKIP_COMMIT" = false ]; then
-    # Check if tar file already exists
-    if [ -f "$TAR_FILE" ]; then
-        print_warn "TAR file already exists: $TAR_FILE"
-        if [ "$FORCE_YES" = true ]; then
-            print_info "Overwriting TAR file"
-            rm -f "$TAR_FILE"
-        else
-            read -p "Do you want to overwrite it? (y/N): " -n 1 -r
-            echo
-            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                print_error "Aborted by user"
-                exit 1
-            fi
-            rm -f "$TAR_FILE"
-        fi
-    fi
-
-    # Check if SIF file already exists
-    if [ -f "$SIF_FILE" ]; then
-        print_warn "SIF file already exists: $SIF_FILE"
-        if [ "$FORCE_YES" = true ]; then
-            print_info "Overwriting SIF file"
-            rm -f "$SIF_FILE"
-        else
-            read -p "Overwrite? (y/N): " -n 1 -r
-            echo
-            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                print_error "Aborted by user"
-                exit 1
-            fi
-            rm -f "$SIF_FILE"
-        fi
-    fi
-
     # Check if skopeo is available
     if ! command -v skopeo &> /dev/null; then
         print_error "skopeo is not installed. Please install it first."
         print_info "Install with: sudo apt install skopeo (Ubuntu/Debian)"
-        print_info "Or: brew install skopeo (macOS)"
         exit 1
     fi
 
-    # Ensure image name has a tag (skopeo requires it)
-    if [[ "$IMAGE_NAME" != *":"* ]]; then
-        TAGGED_IMAGE_NAME="${IMAGE_NAME}:latest"
-        print_info "Adding default tag: $TAGGED_IMAGE_NAME"
+    # Determine if we need a new commit by comparing container modification time with TAR timestamp
+    NEED_COMMIT=true
+    if [ -f "$TAR_FILE" ]; then
+        # Get container's last modified time (timestamp)
+        CONTAINER_MODIFIED_TIME=$(docker inspect --format='{{.State.FinishedAt}}' "$CONTAINER_NAME" 2>/dev/null)
+        if [ -z "$CONTAINER_MODIFIED_TIME" ] || [ "$CONTAINER_MODIFIED_TIME" = "0001-01-01T00:00:00Z" ]; then
+            # Container never finished (still running or never ran), use Created time
+            CONTAINER_MODIFIED_TIME=$(docker inspect --format='{{.Created}}' "$CONTAINER_NAME" 2>/dev/null)
+        fi
+        
+        # Convert to epoch time for comparison
+        CONTAINER_EPOCH=$(date -d "$CONTAINER_MODIFIED_TIME" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S" "${CONTAINER_MODIFIED_TIME:0:19}" +%s 2>/dev/null)
+        TAR_EPOCH=$(stat -c %Y "$TAR_FILE" 2>/dev/null || stat -f %m "$TAR_FILE" 2>/dev/null)
+        
+        print_info "Container last modified: $(date -d "@$CONTAINER_EPOCH" 2>/dev/null || date -r "$CONTAINER_EPOCH" 2>/dev/null)"
+        print_info "TAR created: $(date -d "@$TAR_EPOCH" 2>/dev/null || date -r "$TAR_EPOCH" 2>/dev/null)"
+        
+        # Check if container was modified after TAR was created
+        if [ "$TAR_EPOCH" -ge "$CONTAINER_EPOCH" ]; then
+            print_info "TAR is up-to-date with container (no changes detected)"
+            NEED_COMMIT=false
+        else
+            print_warn "Container has been modified since TAR was created"
+            NEED_COMMIT=true
+        fi
     else
-        TAGGED_IMAGE_NAME="$IMAGE_NAME"
+        print_info "No existing TAR file found"
     fi
 
-    # Commit the container to a Docker image
-    print_info "Committing container '$CONTAINER_NAME' to image '$TAGGED_IMAGE_NAME'"
-    if ! docker commit "$CONTAINER_NAME" "$TAGGED_IMAGE_NAME"; then
-        print_error "Failed to commit container"
-        exit 1
-    fi
-    print_info "Container committed successfully"
+    # If commit is needed, always create it and rebuild TAR
+    if [ "$NEED_COMMIT" = true ]; then
+        # If TAR exists and we're rebuilding, handle based on force flag
+        if [ -f "$TAR_FILE" ]; then
+            if [ "$FORCE_YES" = false ]; then
+                read -p "Container modified. Rebuild TAR from container? (y/N): " -n 1 -r
+                echo
+                if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                    print_error "Aborted by user"
+                    exit 1
+                fi
+            else
+                print_info "Force mode: Rebuilding TAR with new commit"
+            fi
+            rm -f "$TAR_FILE"
+        fi
+        
+        # Ensure image name has a tag (skopeo requires it)
+        if [[ "$IMAGE_NAME" != *":"* ]]; then
+            TAGGED_IMAGE_NAME="${IMAGE_NAME}:latest"
+            print_info "Adding default tag: $TAGGED_IMAGE_NAME"
+        else
+            TAGGED_IMAGE_NAME="$IMAGE_NAME"
+        fi
 
-    # Create OCI archive using skopeo (instead of docker save)
-    print_info "Creating OCI archive with skopeo: $TAR_FILE"
-    if ! skopeo copy docker-daemon:"$TAGGED_IMAGE_NAME" oci-archive:"$TAR_FILE"; then
-        print_error "Failed to create OCI archive with skopeo"
-        exit 1
-    fi
+        # Commit the container to a Docker image
+        print_info "Committing container '$CONTAINER_NAME' to image '$TAGGED_IMAGE_NAME'"
+        if ! docker commit "$CONTAINER_NAME" "$TAGGED_IMAGE_NAME"; then
+            print_error "Failed to commit container"
+            exit 1
+        fi
+        print_info "Container committed successfully"
 
-    # Check if tar file was created successfully
-    if [ ! -f "$TAR_FILE" ]; then
-        print_error "OCI archive was not created"
-        exit 1
-    fi
+        # Create OCI archive using skopeo (always rebuild after new commit)
+        print_info "Creating OCI archive with skopeo: $TAR_FILE"
+        if ! skopeo copy docker-daemon:"$TAGGED_IMAGE_NAME" oci-archive:"$TAR_FILE"; then
+            print_error "Failed to create OCI archive with skopeo"
+            exit 1
+        fi
 
-    TAR_SIZE=$(du -h "$TAR_FILE" | cut -f1)
-    print_info "OCI archive created (Size: $TAR_SIZE)"
+        # Check if tar file was created successfully
+        if [ ! -f "$TAR_FILE" ]; then
+            print_error "OCI archive was not created"
+            exit 1
+        fi
+
+        TAR_SIZE=$(du -h "$TAR_FILE" | cut -f1)
+        print_info "OCI archive created (Size: $TAR_SIZE)"
+    else
+        TAR_SIZE=$(du -h "$TAR_FILE" | cut -f1)
+        print_info "Using existing TAR (Size: $TAR_SIZE)"
+    fi
 else
     print_info "Skipping Docker commit and OCI archive creation (--skip-commit mode)"
     # Check if TAR already exists when skipping build
@@ -314,14 +319,19 @@ if [ ! -f "$DEF_FILE" ]; then
 fi
 print_info "Definition file created successfully"
 
-# Create HPC build script if in HPC prep mode
+# Create consolidated SLURM job script if in HPC prep mode
 if [ "$LOCAL_BUILD" = false ]; then
-    HPC_SCRIPT="$HPC_BUILD_DIR/build_on_hpc.sh"
-    cat > "$HPC_SCRIPT" << 'HPCEOF'
+    SLURM_SCRIPT="$HPC_BUILD_DIR/build.slurm"
+    cat > "$SLURM_SCRIPT" << 'SLURMEOF'
 #!/bin/bash
-# HPC Build Script - Auto-generated
-# This script should be run on the HPC system after uploading the hpc_build folder
-# Usage: bash build_on_hpc.sh
+#SBATCH --nodes=1
+#SBATCH --time=01:00:00
+#SBATCH --ntasks=1
+#SBATCH --partition=scavenger_l4      
+#SBATCH --cpus-per-task=5
+#SBATCH --mem=32G
+#SBATCH --output=build.out
+#SBATCH --error=build.err
 
 set -e
 
@@ -331,15 +341,18 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-print_info() { echo -e "${GREEN}[HPC BUILD]${NC} $1"; }
-print_error() { echo -e "${RED}[HPC BUILD ERROR]${NC} $1"; }
-print_warn() { echo -e "${YELLOW}[HPC BUILD WARN]${NC} $1"; }
+print_info() { echo -e "${GREEN}[SLURM BUILD]${NC} $1"; }
+print_error() { echo -e "${RED}[SLURM BUILD ERROR]${NC} $1"; }
+print_warn() { echo -e "${YELLOW}[SLURM BUILD WARN]${NC} $1"; }
 
-# Get the directory where this script is located
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Get the directory from which sbatch was invoked
+SCRIPT_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "$0")" && pwd)}"
+cd "$SCRIPT_DIR" || exit 1
+
 print_info "Build directory: $SCRIPT_DIR"
+print_info "Job ID: ${SLURM_JOB_ID:-N/A}"
 
-# Find TAR and DEF files in the same directory
+# Find TAR and DEF files
 TAR_FILE=$(find "$SCRIPT_DIR" -maxdepth 1 -name "*.tar" | head -n 1)
 DEF_FILE=$(find "$SCRIPT_DIR" -maxdepth 1 -name "*.def" | head -n 1)
 
@@ -356,185 +369,210 @@ fi
 print_info "Found TAR file: $(basename "$TAR_FILE")"
 print_info "Found DEF file: $(basename "$DEF_FILE")"
 
-# Extract image name from tar file
 IMAGE_NAME=$(basename "$TAR_FILE" .tar)
-print_info "Image name: $IMAGE_NAME"
-
-# Build in the same directory as the TAR file (no copying needed)
 TARGET_SIF="$SCRIPT_DIR/${IMAGE_NAME}.sif"
-print_info "Build directory: $SCRIPT_DIR"
-print_info "SIF will be created in the same directory as TAR and DEF files"
+TARGET_SANDBOX="$SCRIPT_DIR/${IMAGE_NAME}_sandbox"
+
+print_info "Image name: $IMAGE_NAME"
 
 # Load Apptainer module
 print_info "Loading Apptainer module..."
-if ! module load apptainer 2>/dev/null; then
-    print_warn "Could not load apptainer module, trying singularity..."
-    if ! module load singularity 2>/dev/null; then
-        print_error "Could not load apptainer or singularity module"
-        print_error "Please ensure the module is available: module avail apptainer"
+
+# Check if module command exists
+if ! command -v module &>/dev/null; then
+    print_error "Module command not found"
+    print_error "This HPC system may not use environment modules"
+    print_error "Checking if apptainer is available in PATH..."
+    if command -v apptainer &>/dev/null; then
+        print_info "Found apptainer in PATH: $(which apptainer)"
+        APPTAINER_CMD="apptainer"
+    elif command -v singularity &>/dev/null; then
+        print_info "Found singularity in PATH: $(which singularity)"
+        APPTAINER_CMD="singularity"
+    else
+        print_error "Neither apptainer nor singularity found in PATH"
+        print_error "Please ensure Apptainer/Singularity is installed and available"
         exit 1
     fi
-fi
-
-APPTAINER_VERSION=$(apptainer --version 2>/dev/null || singularity --version 2>/dev/null)
-print_info "Apptainer/Singularity version: $APPTAINER_VERSION"
-
-# Check if SIF already exists
-if [ -f "$TARGET_SIF" ]; then
-    print_warn "SIF file already exists: $TARGET_SIF"
-    read -p "Overwrite? (y/N): " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        rm -f "$TARGET_SIF"
-    else
-        print_error "Aborted by user"
-        exit 1
-    fi
-fi
-
-# Build the SIF file
-print_info "Building Apptainer SIF: $TARGET_SIF"
-print_info "This may take several minutes..."
-
-BUILD_SUCCESS=false
-BUILD_METHOD=""
-
-# Try standard build first (more reliable on HPC)
-print_info "Attempting standard build without --fakeroot..."
-if apptainer build "$TARGET_SIF" oci-archive://"$TAR_FILE" 2>&1 | tee /tmp/apptainer_build.log; then
-    # Check if SIF was actually created (tee returns success even if build failed)
-    if [ -f "$TARGET_SIF" ]; then
-        print_info "Built successfully with standard method"
-        BUILD_SUCCESS=true
-        BUILD_METHOD="standard"
-    else
-        print_warn "Standard build reported success but SIF not created"
-    fi
-fi
-
-# If standard build failed, try with --fakeroot
-if [ "$BUILD_SUCCESS" = false ]; then
-    print_info "Attempting build with --fakeroot..."
-    rm -f "$TARGET_SIF" 2>/dev/null  # Clean up any partial file
-    
-    if apptainer build --fakeroot "$TARGET_SIF" oci-archive://"$TAR_FILE" 2>&1 | tee /tmp/apptainer_build.log; then
-        if [ -f "$TARGET_SIF" ]; then
-            print_info "Built successfully with --fakeroot"
-            BUILD_SUCCESS=true
-            BUILD_METHOD="--fakeroot"
+else
+    # Try loading apptainer module
+    if module load apptainer 2>&1; then
+        print_info "Loaded apptainer module"
+        # Verify it's actually available
+        if which apptainer &>/dev/null; then
+            print_info "Found apptainer: $(which apptainer)"
+            APPTAINER_CMD="apptainer"
         else
-            print_warn "Fakeroot build reported success but SIF not created"
-            BUILD_ERROR=$(cat /tmp/apptainer_build.log 2>/dev/null | tail -10)
-            if echo "$BUILD_ERROR" | grep -q "exec format error\|fakeroot"; then
-                print_warn "Fakeroot method failed (architecture/binary issue)"
+            print_warn "Module loaded but apptainer command not found in PATH"
+            APPTAINER_CMD=""
+        fi
+    else
+        print_warn "Could not load apptainer module"
+        APPTAINER_CMD=""
+    fi
+    
+    # Try singularity if apptainer didn't work
+    if [ -z "$APPTAINER_CMD" ]; then
+        print_info "Trying singularity module..."
+        if module load singularity 2>&1; then
+            print_info "Loaded singularity module"
+            if which singularity &>/dev/null; then
+                print_info "Found singularity: $(which singularity)"
+                APPTAINER_CMD="singularity"
+            else
+                print_warn "Module loaded but singularity command not found in PATH"
+                APPTAINER_CMD=""
+            fi
+        else
+            print_error "Could not load singularity module either"
+        fi
+    fi
+    
+    # Final check
+    if [ -z "$APPTAINER_CMD" ]; then
+        print_error "Failed to load apptainer or singularity modules"
+        print_error "Available modules:"
+        module avail 2>&1 | grep -i "apptainer\|singularity" || echo "  (none found)"
+        print_error "Current PATH: $PATH"
+        exit 1
+    fi
+fi
+
+# Get version
+APPTAINER_VERSION=$($APPTAINER_CMD --version 2>&1)
+print_info "$APPTAINER_CMD version: $APPTAINER_VERSION"
+
+# Build SIF if it doesn't exist or is older than TAR
+BUILD_SIF=true
+if [ -f "$TARGET_SIF" ]; then
+    SIF_TIME=$(stat -c %Y "$TARGET_SIF" 2>/dev/null)
+    TAR_TIME=$(stat -c %Y "$TAR_FILE" 2>/dev/null)
+    
+    if [ "$SIF_TIME" -gt "$TAR_TIME" ]; then
+        print_info "SIF is up-to-date, skipping build"
+        BUILD_SIF=false
+    else
+        print_warn "SIF is older than TAR, rebuilding..."
+        rm -f "$TARGET_SIF"
+    fi
+fi
+
+# Build SIF
+if [ "$BUILD_SIF" = true ]; then
+    print_info "Building SIF: $TARGET_SIF"
+    print_info "This may take several minutes..."
+    
+    BUILD_SUCCESS=false
+    
+    # Try standard build first (without fakeroot to avoid userid issues)
+    print_info "Attempting standard build..."
+    if $APPTAINER_CMD build "$TARGET_SIF" "oci-archive://$TAR_FILE" 2>&1 | tee /tmp/apptainer_build_${SLURM_JOB_ID}.log; then
+        if [ -f "$TARGET_SIF" ]; then
+            BUILD_SUCCESS=true
+            print_info "Built successfully with standard method"
+        fi
+    fi
+    
+    # Try with --fix-perms if standard failed (avoids userid issues)
+    if [ "$BUILD_SUCCESS" = false ]; then
+        print_info "Attempting build with --fix-perms..."
+        rm -f "$TARGET_SIF" 2>/dev/null
+        if $APPTAINER_CMD build --fix-perms "$TARGET_SIF" "oci-archive://$TAR_FILE" 2>&1 | tee /tmp/apptainer_build_${SLURM_JOB_ID}.log; then
+            if [ -f "$TARGET_SIF" ]; then
+                BUILD_SUCCESS=true
+                print_info "Built successfully with --fix-perms"
             fi
         fi
     fi
+    
+    # Try with --fakeroot as last resort if HPC supports it
+    if [ "$BUILD_SUCCESS" = false ]; then
+        print_info "Attempting build with --fakeroot..."
+        rm -f "$TARGET_SIF" 2>/dev/null
+        if $APPTAINER_CMD build --fakeroot "$TARGET_SIF" "oci-archive://$TAR_FILE" 2>&1 | tee /tmp/apptainer_build_${SLURM_JOB_ID}.log; then
+            if [ -f "$TARGET_SIF" ]; then
+                BUILD_SUCCESS=true
+                print_info "Built successfully with --fakeroot"
+            fi
+        fi
+    fi
+    
+    rm -f /tmp/apptainer_build_${SLURM_JOB_ID}.log
+    
+    if [ "$BUILD_SUCCESS" = false ]; then
+        print_error "Failed to build SIF image"
+        exit 1
+    fi
+    
+    SIF_SIZE=$(du -h "$TARGET_SIF" | cut -f1)
+    print_info "SIF created: $TARGET_SIF (Size: $SIF_SIZE)"
+else
+    SIF_SIZE=$(du -h "$TARGET_SIF" | cut -f1)
+    print_info "Using existing SIF (Size: $SIF_SIZE)"
 fi
 
-# If both failed, try with --fix-perms as last resort
-if [ "$BUILD_SUCCESS" = false ]; then
-    print_info "Attempting build with --fix-perms..."
-    rm -f "$TARGET_SIF" 2>/dev/null  # Clean up any partial file
+# Build sandbox if it doesn't exist or is older than SIF
+BUILD_SANDBOX=true
+if [ -d "$TARGET_SANDBOX" ]; then
+    SANDBOX_TIME=$(stat -c %Y "$TARGET_SANDBOX" 2>/dev/null)
+    SIF_TIME=$(stat -c %Y "$TARGET_SIF" 2>/dev/null)
     
-    if apptainer build --fix-perms "$TARGET_SIF" oci-archive://"$TAR_FILE" 2>&1 | tee /tmp/apptainer_build.log; then
-        if [ -f "$TARGET_SIF" ]; then
-            print_info "Built successfully with --fix-perms"
-            BUILD_SUCCESS=true
-            BUILD_METHOD="--fix-perms"
-        else
-            print_warn "Fix-perms build reported success but SIF not created"
-        fi
+    if [ "$SANDBOX_TIME" -gt "$SIF_TIME" ]; then
+        print_info "Sandbox is up-to-date"
+        BUILD_SANDBOX=false
+    else
+        print_warn "Sandbox is older than SIF, rebuilding..."
+        rm -rf "$TARGET_SANDBOX"
     fi
 fi
 
-# Clean up log file
-rm -f /tmp/apptainer_build.log
-
-if [ "$BUILD_SUCCESS" = false ]; then
-    print_error "Failed to build Apptainer image with all available methods"
-    print_error "Definition file: $DEF_FILE"
-    print_error "TAR file: $TAR_FILE"
-    print_error ""
-    print_error "Troubleshooting steps:"
-    print_error "  1. Check if you have sufficient disk space: df -h $SCRIPT_DIR"
-    print_error "  2. Try building manually: apptainer build $TARGET_SIF oci-archive://$TAR_FILE"
-    print_error "  3. Check HPC documentation for Apptainer build requirements"
-    print_error "  4. Contact HPC support if the issue persists"
-    exit 1
+# Build sandbox
+if [ "$BUILD_SANDBOX" = true ]; then
+    print_info "Building sandbox: $TARGET_SANDBOX"
+    
+    if $APPTAINER_CMD build --sandbox "$TARGET_SANDBOX" "$TARGET_SIF"; then
+        SANDBOX_SIZE=$(du -sh "$TARGET_SANDBOX" | cut -f1)
+        print_info "Sandbox created: $TARGET_SANDBOX (Size: $SANDBOX_SIZE)"
+        
+        # Test sandbox
+        if $APPTAINER_CMD exec "$TARGET_SANDBOX" whoami &>/dev/null; then
+            print_info "Sandbox test successful!"
+        fi
+    else
+        print_warn "Sandbox creation failed, but SIF is available"
+    fi
 else
-    print_info "Build method used: $BUILD_METHOD"
+    SANDBOX_SIZE=$(du -sh "$TARGET_SANDBOX" | cut -f1)
+    print_info "Using existing sandbox (Size: $SANDBOX_SIZE)"
 fi
-
-# Check if SIF was created
-if [ ! -f "$TARGET_SIF" ]; then
-    print_error "SIF file was not created"
-    exit 1
-fi
-
-SIF_SIZE=$(du -h "$TARGET_SIF" | cut -f1)
-print_info "Apptainer image built successfully!"
-print_info "Location: $TARGET_SIF"
-print_info "Size: $SIF_SIZE"
-
-# Test the image...
-print_info "Testing the image..."
-if apptainer exec "$TARGET_SIF" whoami; then
-    print_info "Image test successful!"
-else
-    print_warn "Image test failed - you may encounter user namespace issues"
-fi
-
-print_info "Usage examples:"
-print_info "  apptainer shell $TARGET_SIF"
-print_info "  apptainer exec $TARGET_SIF <command>"
-print_info "  apptainer exec --nv $TARGET_SIF <command>  (with GPU)"
 
 print_info "Build complete!"
-HPCEOF
-
-    chmod +x "$HPC_SCRIPT"
-    print_info "Created HPC build script: $HPC_SCRIPT"
-    
-    # Create SLURM job script
-    SLURM_SCRIPT="$HPC_BUILD_DIR/build.slurm"
-    cat > "$SLURM_SCRIPT" << SLURMEOF
-#!/bin/bash
-#SBATCH --nodes=1
-#SBATCH --time=60:00:00
-#SBATCH --ntasks=1
-#SBATCH --partition=amd      
-#SBATCH --cpus-per-task=15
-#SBATCH --mem=128G
-#SBATCH --output=build.out
-#SBATCH --error=build.err
-
-# Get the directory where this SLURM script is located
-SCRIPT_DIR="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
-
-# Load Apptainer module
-module load apptainer
-
-# Run the build script from the same directory
-bash "\$SCRIPT_DIR/build_on_hpc.sh"
+print_info ""
+print_info "Usage examples:"
+print_info "  # Using sandbox (RECOMMENDED - fast startup, multiple instances):"
+print_info "  apptainer exec --nv $TARGET_SANDBOX <command>"
+print_info "  apptainer exec --nv --writable-tmpfs $TARGET_SANDBOX <command>"
+print_info ""
+print_info "  # Using SIF (fallback if sandbox unavailable):"
+print_info "  apptainer exec --nv --unsquash $TARGET_SIF <command>"
 SLURMEOF
 
     chmod +x "$SLURM_SCRIPT"
-    print_info "Created SLURM job script: $SLURM_SCRIPT"
+    print_info "Created SLURM build script: $SLURM_SCRIPT"
     
     # Create README for HPC build
     README_FILE="$HPC_BUILD_DIR/README.md"
     cat > "$README_FILE" << 'READMEEOF'
 # HPC Apptainer Build Package
 
-This folder contains everything needed to build an Apptainer SIF image on the HPC system.
+This folder contains everything needed to build an Apptainer SIF and sandbox on the HPC system.
 
 ## Contents
 
 - `*.tar` - OCI archive of Docker image
 - `*.def` - Apptainer definition file
-- `build_on_hpc.sh` - Build script that runs the actual build
-- `build.slurm` - SLURM job script (recommended)
+- `build.slurm` - SLURM job script (builds both SIF and sandbox)
+- `README.md` - This file
 
 ## Quick Start
 
@@ -543,7 +581,7 @@ This folder contains everything needed to build an Apptainer SIF image on the HP
 scp -r this_folder/ user@hpc.soton.ac.uk:/scratch/user/builds/
 ```
 
-### 2. Submit SLURM Job (Recommended)
+### 2. Submit SLURM Job
 ```bash
 ssh user@hpc.soton.ac.uk
 cd /scratch/user/builds/folder_name/
@@ -556,27 +594,21 @@ squeue -u $USER
 tail -f build.out  # Monitor progress
 ```
 
-### 3. Or Run Directly (Alternative)
-```bash
-ssh user@hpc.soton.ac.uk
-cd /scratch/user/builds/folder_name/
-bash build_on_hpc.sh
+### 3. Find Your Built Images
+The built images will be in the same directory as the uploaded files:
 ```
-
-### 3. Find Your SIF
-The built SIF will be located in the same directory as the uploaded files:
-```
-/path/to/uploaded/folder/image_name.sif
+/path/to/uploaded/folder/image_name.sif        (SIF image)
+/path/to/uploaded/folder/image_name_sandbox/   (Sandbox - RECOMMENDED)
 ```
 
 ## What the Build Script Does
 
 1. Locates the .tar and .def files in the current directory
 2. Loads the apptainer module (`module load apptainer`)
-3. Builds the SIF in the same directory (no file copying needed)
-4. Tries multiple build methods: standard → --fakeroot → --fix-perms
-5. Tests the image with `whoami` command
-6. Reports the final SIF location and size
+3. Builds the SIF image (skips if already up-to-date)
+4. Builds the sandbox from SIF (fast startup, multiple instances)
+5. Tests both images
+6. Provides usage examples
 
 ## Troubleshooting
 
@@ -607,25 +639,38 @@ cat build.err
 scancel <job_id>
 ```
 
-## Manual Build (if script fails)
+## Manual Build (if SLURM script fails)
 
 ```bash
 module load apptainer
 cd /path/to/uploaded/folder/
+
+# Build SIF
 apptainer build --fakeroot image_name.sif oci-archive://image_name.tar
+
+# Build sandbox from SIF
+apptainer build --sandbox image_name_sandbox image_name.sif
 ```
 
-## Testing the Built Image
+## Using the Built Images
 
 ```bash
-# Basic test
-apptainer exec /path/to/folder/image_name.sif whoami
+# RECOMMENDED: Use sandbox (fast startup, supports multiple instances)
+apptainer exec --nv /path/to/folder/image_name_sandbox <command>
+
+# With temporary writes
+apptainer exec --nv --writable-tmpfs /path/to/folder/image_name_sandbox <command>
+
+# Bind external Python environment (keeps image small)
+apptainer exec --nv \
+  --bind /scratch/user/envs/e-swarm:/root/e-swarm \
+  /path/to/folder/image_name_sandbox <command>
 
 # Interactive shell
-apptainer shell /path/to/folder/image_name.sif
+apptainer shell --nv /path/to/folder/image_name_sandbox
 
-# With GPU support
-apptainer exec --nv /path/to/folder/image_name.sif nvidia-smi
+# Fallback: Use SIF (slower startup if FUSE unavailable)
+apptainer exec --nv --unsquash /path/to/folder/image_name.sif <command>
 ```
 READMEEOF
 
@@ -686,9 +731,7 @@ else
     print_info "Contents:"
     print_info "  - ${IMAGE_NAME}.tar (OCI archive)"
     print_info "  - ${IMAGE_NAME}.def (Apptainer definition)"
-    print_info "  - build_on_hpc.sh (Build script)"
-    print_info "  - build.slurm (SLURM job script)"
+    print_info "  - build.slurm (SLURM job script - builds SIF and sandbox)"
     print_info "  - README.md (Instructions)"
     echo ""
-    print_info "Preparation complete!"
 fi
