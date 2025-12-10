@@ -13,13 +13,13 @@ fi
 # TODO: Handle mappo-gail and mappo_gail renaming issue
 USERNAME="dhavids"
 REPOS=(
+    "util"
     "argos_il"
     "configs"
     "docs"
     "mappo"
     "mappo-gail"
     "mpe"
-    "python_env"
     "translator"
     "turtlebot3_il"
 )

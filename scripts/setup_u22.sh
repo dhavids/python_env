@@ -15,8 +15,10 @@ fi
 
 # Create and set up the MARL workspace
 MARL_DIR="$HOME/marl"
+PYTHON_ENV_REPO="https://github.com/dhavids/python_env.git"
+PYTHON_ENV_DIR="$MARL_DIR/python_env"
 UTIL_DIR="$MARL_DIR/util"
-SETUP_DIR="$UTIL_DIR/scripts/setup"
+SETUP_DIR="$PYTHON_ENV_DIR/scripts/setup"
 
 echo "================================"
 echo "Ubuntu 22.04 Setup Script"
@@ -38,52 +40,26 @@ $SUDO apt install -y build-essential cmake git wget curl unzip pkg-config \
 
 echo ""
 echo "================================"
-echo "Setting up util repository"
+echo "Setting up python_env repository"
 echo "================================"
 
-# Function to clone util repository with error handling
-clone_util_repo() {
-    echo "Cloning util repository..."
-    cd "$MARL_DIR"
-    if ! git clone git@github.com:dhavids/util.git; then
-        echo ""
-        echo "[ERROR] Failed to clone util repository."
-        echo ""
-        echo "To set up your SSH key, follow these steps:"
-        echo "1. Generate a new SSH key:"
-        echo "   ssh-keygen -t rsa -b 4096 -C \"your_email@example.com\""
-        echo ""
-        echo "2. Display your public key:"
-        echo "   cat ~/.ssh/id_rsa.pub"
-        echo ""
-        echo "3. Copy the output and add it to your GitHub account:"
-        echo "   - Go to: https://github.com/settings/keys"
-        echo "   - Click 'New SSH key'"
-        echo "   - Paste your public key"
-        echo ""
-        echo "4. Test your SSH connection:"
-        echo "   ssh -T git@github.com"
-        echo ""
-        echo "After setting up SSH, run this script again."
-        exit 1
-    fi
-}
-
-# Check if util exists and is a git repo
-if [ -d "$UTIL_DIR/.git" ]; then
-    echo "[INFO] Util repository exists, fetching latest changes..."
-    cd "$UTIL_DIR"
+# Clone or update python_env repository
+if [ -d "$PYTHON_ENV_DIR/.git" ]; then
+    echo "[INFO] python_env repository exists, fetching latest changes..."
+    cd "$PYTHON_ENV_DIR"
     git fetch origin
-    git pull origin main || echo "[WARNING] Failed to pull util updates"
+    git pull origin main || echo "[WARNING] Failed to pull python_env updates"
     cd "$MARL_DIR"
-elif [ -d "$UTIL_DIR" ]; then
-    echo "[INFO] Util directory exists but is not a git repo, removing..."
-    rm -rf "$UTIL_DIR"
-    clone_util_repo
+elif [ -d "$PYTHON_ENV_DIR" ]; then
+    echo "[INFO] python_env directory exists but is not a git repo, removing..."
+    rm -rf "$PYTHON_ENV_DIR"
+    echo "Cloning python_env repository..."
+    git clone "$PYTHON_ENV_REPO" "$PYTHON_ENV_DIR"
 else
-    clone_util_repo
+    echo "Cloning python_env repository..."
+    git clone "$PYTHON_ENV_REPO" "$PYTHON_ENV_DIR"
 fi
-echo "[OK] Util repository ready"
+echo "[OK] python_env repository ready"
 
 # Verify all required setup scripts exist
 echo ""
@@ -111,7 +87,7 @@ if [ ${#MISSING_SCRIPTS[@]} -gt 0 ]; then
         echo "  - $script"
     done
     echo ""
-    echo "Please ensure the util repository is properly cloned at: $UTIL_DIR"
+    echo "Please ensure the python_env repository is properly cloned at: $PYTHON_ENV_DIR"
     exit 1
 fi
 
@@ -155,6 +131,8 @@ if [ -f "$AUTOCOMP_SCRIPT" ]; then
     echo "[OK] Bash auto-completion configured"
 else
     echo "[WARNING] Auto-completion script not found at: $AUTOCOMP_SCRIPT"
+    echo "          The util repository should have been cloned by repo.sh"
+    echo "          If you need auto-completion, ensure util repository is properly set up"
 fi
 
 # Change to base directory for running the command
@@ -177,14 +155,17 @@ echo ""
 echo "Next Steps:"
 echo "------------"
 echo ""
-echo "1. Source your new bash configuration:"
-echo "   source ~/.bashrc"
+echo "1. Source ROS2 setup:"
+echo "   source /opt/ros/humble/setup.bash"
 echo ""
 echo "2. Build the ROS2 workspace:"
 echo "   cd ~/marl/argos_il/dev_ws"
 echo "   colcon build --symlink-install"
 echo ""
-echo "3. Test the workflow with the experts command:"
+echo "3. Activate Python virtual environment:"
+echo "   source ~/e-swarm/bin/activate"
+echo ""
+echo "4. Test the workflow with the experts command:"
 echo "   experts --scenario grid --simple_obs --max_trajs 5"
 echo "============================================================"
 echo ""
