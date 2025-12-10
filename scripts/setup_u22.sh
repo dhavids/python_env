@@ -47,17 +47,49 @@ echo "================================"
 if [ -d "$PYTHON_ENV_DIR/.git" ]; then
     echo "[INFO] python_env repository exists, fetching latest changes..."
     cd "$PYTHON_ENV_DIR"
-    git fetch origin
+    if ! git fetch origin 2>/dev/null; then
+        echo ""
+        echo "[ERROR] Failed to fetch python_env repository updates."
+        echo ""
+        echo "This is likely a new environment. Please set up your SSH key first:"
+        echo ""
+        echo "1. Generate a new SSH key:"
+        echo "   ssh-keygen -t rsa -b 4096 -C \"your_email@example.com\""
+        echo ""
+        echo "2. Display your public key:"
+        echo "   cat ~/.ssh/id_rsa.pub"
+        echo ""
+        echo "3. Copy the output and add it to your GitHub account:"
+        echo "   - Go to: https://github.com/settings/keys"
+        echo "   - Click 'New SSH key'"
+        echo "   - Paste your public key"
+        echo ""
+        echo "4. Test your SSH connection:"
+        echo "   ssh -T git@github.com"
+        echo ""
+        echo "After setting up SSH, run this script again."
+        exit 1
+    fi
     git pull origin main || echo "[WARNING] Failed to pull python_env updates"
     cd "$MARL_DIR"
 elif [ -d "$PYTHON_ENV_DIR" ]; then
     echo "[INFO] python_env directory exists but is not a git repo, removing..."
     rm -rf "$PYTHON_ENV_DIR"
     echo "Cloning python_env repository..."
-    git clone "$PYTHON_ENV_REPO" "$PYTHON_ENV_DIR"
+    if ! git clone "$PYTHON_ENV_REPO" "$PYTHON_ENV_DIR"; then
+        echo ""
+        echo "[ERROR] Failed to clone python_env repository."
+        echo "Please check your internet connection and try again."
+        exit 1
+    fi
 else
     echo "Cloning python_env repository..."
-    git clone "$PYTHON_ENV_REPO" "$PYTHON_ENV_DIR"
+    if ! git clone "$PYTHON_ENV_REPO" "$PYTHON_ENV_DIR"; then
+        echo ""
+        echo "[ERROR] Failed to clone python_env repository."
+        echo "Please check your internet connection and try again."
+        exit 1
+    fi
 fi
 echo "[OK] python_env repository ready"
 
