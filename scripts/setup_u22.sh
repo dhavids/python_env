@@ -47,7 +47,7 @@ echo "================================"
 if [ -d "$PYTHON_ENV_DIR/.git" ]; then
     echo "[INFO] python_env repository exists, fetching latest changes..."
     cd "$PYTHON_ENV_DIR"
-    if ! git fetch origin 2>/dev/null; then
+    if ! git fetch origin 2>&1; then
         echo ""
         echo "[ERROR] Failed to fetch python_env repository updates."
         echo ""
