@@ -4,7 +4,57 @@ This document explains how to download and run setup scripts for different envir
 
 ## Available Configurations
 
-### 1. Full MARL Setup (ROS2 + Gazebo + ARGoS)
+### 1. ROS2 Humble with Gazebo
+
+Download and run the setup script:
+
+```bash
+# Install wget if not available (for minimal Docker images)
+apt update && apt install -y wget
+
+# Download the script
+wget https://raw.githubusercontent.com/dhavids/python_env/main/scripts/setup_u22_gazebo.sh
+
+# Make it executable
+chmod +x setup_u22_gazebo.sh
+
+# Run the script
+bash setup_u22_gazebo.sh
+```
+
+**What this installs:**
+- ROS2 Humble
+- Gazebo simulator
+- Python virtual environment (e-swarm)
+
+---
+
+### 2. ROS2 Humble with ARGoS
+
+Download and run the setup script:
+
+```bash
+# Install wget if not available (for minimal Docker images)
+apt update && apt install -y wget
+
+# Download the script
+wget https://raw.githubusercontent.com/dhavids/python_env/main/scripts/setup_u22_argos.sh
+
+# Make it executable
+chmod +x setup_u22_argos.sh
+
+# Run the script
+bash setup_u22_argos.sh
+```
+
+**What this installs:**
+- ROS2 Humble
+- ARGoS3 simulator
+- Python virtual environment (e-swarm)
+
+---
+
+### 3. Full MARL Setup (ROS2 + Gazebo + ARGoS)
 
 Download and run the complete setup script:
 
@@ -31,56 +81,6 @@ bash setup_u22.sh
 - Bash auto-completion utilities
 
 **Note:** This script requires SSH access to private repositories. You'll need to set up your SSH key if prompted.
-
----
-
-### 2. ROS2 Humble with Gazebo
-
-Download and run the setup script:
-
-```bash
-# Install wget if not available (for minimal Docker images)
-apt update && apt install -y wget
-
-# Download the script
-wget https://raw.githubusercontent.com/dhavids/python_env/main/scripts/setup_u22_gazebo.sh
-
-# Make it executable
-chmod +x setup_u22_gazebo.sh
-
-# Run the script
-bash setup_u22_gazebo.sh
-```
-
-**What this installs:**
-- ROS2 Humble
-- Gazebo simulator
-- Python virtual environment (e-swarm)
-
----
-
-### 3. ROS2 Humble with ARGoS
-
-Download and run the setup script:
-
-```bash
-# Install wget if not available (for minimal Docker images)
-apt update && apt install -y wget
-
-# Download the script
-wget https://raw.githubusercontent.com/dhavids/python_env/main/scripts/setup_u22_argos.sh
-
-# Make it executable
-chmod +x setup_u22_argos.sh
-
-# Run the script
-bash setup_u22_argos.sh
-```
-
-**What this installs:**
-- ROS2 Humble
-- ARGoS3 simulator
-- Python virtual environment (e-swarm)
 
 ---
 

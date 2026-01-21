@@ -1,2 +1,2 @@
 # python_env
-Utilities for importing and building my python enviroments
+Repository for managing Python environments and setting up Workspaces
